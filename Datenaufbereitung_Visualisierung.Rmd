@@ -1,0 +1,296 @@
+---
+title: "Datenaufbereitung und Visualisierung mit R"
+author: "WR"
+date: "Bearbeitungsstand: `r Sys.time()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+    toc_float:
+      collapsed: false
+    code_folding: show
+---
+
+```{r setup, include = FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+# load("Alben.Rda")
+```
+
+
+# Datenimport - Herausforderungen mit Datentypen
+
+* Zum Einstieg; nicht zu lang
+* Beispiele für Datumsformate, strings_as_factors
+* Excel: unheadr, https://luisdva.github.io/rstats/unheadr-cat/
+* Excel: tidyxl, https://cran.r-project.org/web/packages/tidyxl/vignettes/tidyxl.html
+
+
+## Excel-Daten importieren
+
+### Zum Aufwärmen
+
+Einfaches Beispiel ... readxl
+
+
+### Herausforderung: Informationen in Zellenformatierungen! Dogs 100
+
+![Dogs: 100 yards Sprints; Rasse aus Formatierung (Hervorhebung) erkennbar](dogs_100yards_screenshot.png)
+
+```{r unheadr_dogs100_data}
+
+# Quelle: https://luisdva.github.io/rstats/unheadr-cat/
+# Luis Verde Arregoitia
+
+library(here)
+
+CATspsheet <- tempfile(fileext = ".xlsx")
+curl::curl_download("https://github.com/luisDVA/codeluis/blob/master/fastCAT2015.xlsx?raw=true", CATspsheet)
+
+# Importieren mit readxl
+readxl::read_excel(CATspsheet)
+
+# Excel-Dokument im Arbeitsverzeichnis ablegen
+
+datei <- paste0(here::here(), "/dogs_100yards.xlsx")
+curl::curl_download("https://github.com/luisDVA/codeluis/blob/master/fastCAT2015.xlsx?raw=true", datei)
+
+```
+
+Das **CAT** im Dateipfad steht übrigens für **Coursing Ability Test**.
+
+So weit, so schlecht ... Wie können wir die Daten mit wenig Aufwand aufbereiten?
+Wie müsste ein "tidy data"-Format aussehen?
+
+* Jede Zeile ein Fall (hier: ein Hund)
+* Jede Spalte eine Variable
+
+--> Rasse muss zu einer separaten Variable werden.  
+Wie machen wir das?
+
+Schlechte Lösung: Bearbeitung in Excel. Manuell, nicht automatisiert reproduzierbar! (Es sei denn per VBA)  
+Besser: Volle Automatisierung in R. Das bedeutet: Wir benötigen Informationen über die Zellenformatierungen in R.
+
+### unheadr: Excel-Formatierungen in R sichtbar machen
+
+```{r unheadr_dogs100_annotate_mf}
+
+library(unheadr)
+
+Hunderassen <- annotate_mf(CATspsheet, orig = Dog, new = dog_annotated)
+Hunderassen
+
+```
+
+Funktion: annotate_mf; das "mf" steht für "meaningful formatting", also inhaltlich relevante Formatierungen
+Siehe *?annotate_mf*:
+
+* Vier Formatierungsarten werden automatisch behandelt:  
+**fett**, *kursiv*, $\underline{unterstrichen}$, sowie Zellformatierungen.
+
+* annotate_mf möchte einen Pfad zum Exceldokument haben, d. h. die Daten liegen nicht im R-Arbeitsspeicher!
+
+Jetzt haben wir die Formatierungs-Informationen in R. Nächster Schritt: weiterverarbeitung mit regex!
+
+
+### Exkurs: Kurze Einführung in regex - wird später vertieft
+
+Ziel: Praxisorientiert bleiben.
+
+Def.: Reguläre Ausdrücke (**regular expressions**, kurz **regex**) sind ein präzises, flexibles Werkzeug, um Muster in Texten zu beschreiben.
+
+Weiterführende Infos:
+
+* Vignette im *stringr*-Paket: `vignette("regular-expressions", package = "stringr")`
+* Kapitel in *R for Data Science (R4DS)*: https://r4ds.had.co.nz/strings.html
+* *RegexOne*: Reguläre Ausdrücke lernen mit einfachen, interaktiven Übungen (engl.): https://regexone.com/
+
+Hier benötigen wir erst mal nur wenige Infos - später vertiefen wir das Thema:
+
+Es gibt Sonderzeichen, die bestimmte Eigenschaften beschreiben:
+
+* Anfang des Textes: ^
+* Ende des Textes: $
+
+Somit haben einige Zeichen eine besondere Bedeutung in regulären Ausdrücken. Wir müssen also unterscheiden, ob wir ein Zeichen "wörtlich" meinen (es kommt in unserem Text vor und wir suchen danach), oder ob wir seine spezielle Bedeutung als regulärer Ausdruck meinen.
+
+Beispiele für solche Zeichen, neben den oben gezeigten für Anfang und Ende, sind Klammern - sowohl runde () als auch eckige [].
+
+Wollen wir "wörtlich" nach Klammern suchen, müssen wir sie "maskieren" (engl. *escape*). Das Maskierungszeichen ist der Backslash \\.
+
+In Strings (Text-Vektoren in R) wird der Backslash bereits als *escape-Symbol* verwendet. Beispiele:
+
+* Zeilenumbruch \\n
+* Tabulator \\t
+
+Beispiel:
+
+```{r Exkurs_Escape}
+
+cat("Tabulator\tWeiterer Text\nNach Zeilenumbruch")
+
+```
+
+Daher benötigen wir für reguläre Ausdrücke in Strings **zwei Backslashes \\\\**.
+
+
+### unheadr: Excel-Formatierungen für die Datenaufbereitung nutzen
+
+Oben gesehen: Formatierungs-Informationen stehen zu Beginn des Textes in Klammern.  
+--> Wir suchen nach einer Klammer am Anfang, um die Hunderasse zu ermitteln
+
+```{r unheadr_dogs100_regex}
+
+Hunderassen2 <- Hunderassen %>% 
+  untangle2("^\\(", orig = dog_annotated, new = breed)
+
+Hunderassen2
+
+```
+
+Der entscheidende Trick hier ist der reguläre Ausdruck **\^\\(**. **^** sucht am Anfang des Strings, und zwar nach einer geöffneten runden Klammer, die mit zwei Backslashes *maskiert* werden muss, da sie sonst eine andere Bedeutung innerhalb der regulären Ausdrücke hätte (Beispiele dafür sehen wir später: Es geht um Zeichengruppen): **\\\\(**.
+
+Nächster Schritt: Die Zellformatierung aus der Spalte *breed* (Hunderasse) entfernen - wieder mit regex.
+
+Hier: **(highlighted-FFADC5E7) **, mit Leerzeichen nach der Klammer. Danach beginnt die Hunderasse.
+
+Dazu benötigen wir ein paar weitere Tricks:
+
+* Ein Punkt **.** steht wie ein *Joker* für ein beliebiges Zeichen.
+* Ein Plus **+** bedeutet: Eine oder mehr Wiederholungen.
+* **.+** bedeutet also ein oder mehr beliebige Zeichen.
+* Die geschlossene Klammer beschreiben wir analog zu oben mit **\\\\)**.
+* Schließlich gibt es noch ein spezielles Kürzel für Leerzeichen: s (*space*). Wir maskieren es: **\\s**.
+
+Wir verwenden *str_remove* aus dem *stringr*-Paket, um die Zeichenfolge, die wir mit dem regulären Ausdruck beschreiben, zu entfernen.
+
+```{r unheadr_dogs100_regex2}
+
+Hunderassen2 <- Hunderassen2 %>% 
+  mutate(breed = stringr::str_remove(breed, "^\\(.+\\)\\s")) %>% 
+  select(-dog_annotated)
+
+Hunderassen2
+
+```
+
+Unser regulärer Ausdruck, um die Zellformatierung aus der Hunderasse zu entfernen, lautet somit: **^\\\\(.+\\\\)\\\\s**.
+
+Voilà!
+
+
+## unpivotr / tidyxl: "Schwierige" Daten v. a. aus Excel laden
+
+Ausführliches Buch: "Spreadsheet Munging Strategies" von Duncan Garmonsway  
+Autor von tidyxl, unpivotr, smungs (Beispiel-Datensätze für das Buch, liefert Pfade zu den Exceldaten)
+
+https://nacnudus.github.io/spreadsheet-munging-strategies/index.html
+
+
+### tidyxl: Excel-Informationen nach R "hinüberretten"
+
+Grundidee: Software, die Daten aus Excel in andere Programme importiert, trifft oft einschränkende Annahmen bzw. "zwingt" die Daten in ein bestimmtes Format, in der Regel Datensatz (jede Zeile ein Fall, jede Spalte eine Variable, eine Zeile für Spaltenüberschriften). Dabei gehen oft Informationen verloren.
+
+**tidyxl** zielt darauf ab, so viel Informationen wie möglich aus Excel nach R zu übertragen.
+
+Ausblick, siehe https://cran.r-project.org/web/packages/tidyxl/vignettes/tidyxl.html
+
+* Paket **jailbreaker**, um nicht-datensatzförmige Daten *automatisiert* ins Datensatzformat zu übertragen
+* Ähnliches Ziel, abweichende Philosophie: Paket **unpivotr**; enger auf tidyxl bezogen
+* **rsheets**-Projekt: mehrere Pakete, die Arbeitsblatt-Informationen importieren aus Excel und Google Sheets
+* **cellranger**, um Excel-Zellbezüge zu verarbeiten
+
+### unpivotr: Nicht-datensatzförmige ("nicht-rechteckige") Daten v. a. aus Excel laden
+
+Nicht-datensatzförmige ("nicht-rechteckige") Daten v. a. aus Excel laden
+
+
+### Beispiel: Vorbildliche Daten - readxl nachbauen
+
+```{r nacnudus1_clean_data}
+
+library(unpivotr)
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+
+library(openxlsx)
+openXL(path)
+
+library(readxl)
+read_excel(path, sheet = "clean")
+
+library(tidyxl)
+
+xlsx_cells(path, sheet = "clean") %>%
+  # behead("N", header) %>%
+  # direction "N" is discouraged (see ?direction). Better use "up".
+  behead("up", header) %>% 
+  # unpivotr::behead() like tidyr::gather, but for more than one row of headers
+  select(row, data_type, header, character, numeric) %>%
+  spatter(header) %>%
+  # spatter is like tidyr::spread, but for different data types
+  # designed specifically to work with tidyr::xlsx_cells() or unpivotr::as_cells()
+  # recommended to drop col column first, keep row column until spatter step
+  select(-row)
+
+
+```
+
+
+### Beispiele: Fast ordentliche Daten
+
+#### Transponiert (Variablennamen in erster Spalte statt Zeile)
+
+Das readxl-Beispiel ist kompliziert (erklärungsbedürftig).
+
+Für tidyxl und unpivotr spielt es keine Rolle, in welcher Richtung die Daten angeordnet sind. Man muss lediglich das *direction*-Argument angeben: "left" statt "up".
+
+```{r fast_ordentlich}
+
+# read_excel(path, sheet = "transposed", col_names = FALSE) %>%
+#   t() %>%
+#   `colnames<-`(.[1, ]) %>%
+#   .[-1, ] %>%
+#   as_tibble()
+
+xlsx_cells(path, sheet = "transposed") %>%
+  behead("left", header) %>%
+  select(col, data_type, header, character, numeric) %>%
+  spatter(header) %>%
+  select(Name, Age)
+
+```
+
+
+#### Andere Infos auf gleichem Arbeitsblatt
+
+Es wird komplizierter, wenn die Daten nicht in Zelle A1 beginnen.
+
+Wenn man das genaue Layout kennt: 
+
+# Sich einen Datensatz erschließen: Explorative Datenanalyse
+
+* skimr
+* DataExplorer
+* GGAlly
+
+
+# Daten aus mehreren Quellen zusammenfügen
+
+* dplyr, two table verbs: join-Familie
+
+
+# Arbeiten mit Texten (Strings und Factors)
+
+* Beispiel für fct_lump_*, z. B. Autozulassungen
+* Textanalyse-Beispiel
+
+# Umgang mit Fehlwerten
+
+* Einige Base R-Funktionen
+* naniar
+* simputation
+* Evtl. Imputation mit caret?
+
