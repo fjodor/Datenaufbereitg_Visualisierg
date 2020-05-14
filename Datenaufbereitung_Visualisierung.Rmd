@@ -207,7 +207,7 @@ Ausblick, siehe https://cran.r-project.org/web/packages/tidyxl/vignettes/tidyxl.
 Nicht-datensatzförmige ("nicht-rechteckige") Daten v. a. aus Excel laden
 
 
-### Beispiel: Vorbildliche Daten - readxl nachbauen
+### Vorbildliche Daten - readxl nachbauen
 
 ```{r nacnudus1_clean_data}
 
@@ -239,7 +239,7 @@ xlsx_cells(path, sheet = "clean") %>%
 ```
 
 
-### Beispiele: Fast ordentliche Daten
+### Fast ordentliche Daten
 
 #### Transponiert (Variablennamen in erster Spalte statt Zeile)
 
@@ -247,7 +247,7 @@ Das readxl-Beispiel ist kompliziert (erklärungsbedürftig).
 
 Für tidyxl und unpivotr spielt es keine Rolle, in welcher Richtung die Daten angeordnet sind. Man muss lediglich das *direction*-Argument angeben: "left" statt "up".
 
-```{r fast_ordentlich}
+```{r almost_tidy_transpose}
 
 # read_excel(path, sheet = "transposed", col_names = FALSE) %>%
 #   t() %>%
@@ -268,7 +268,122 @@ xlsx_cells(path, sheet = "transposed") %>%
 
 Es wird komplizierter, wenn die Daten nicht in Zelle A1 beginnen.
 
-Wenn man das genaue Layout kennt: 
+Wenn man das genaue Layout kennt:
+* leere Zeilen oberhalb: readxl::read_excel(skip = ...)
+* leere Spalten: readxl::read_excel(col_types = ...)
+* leere Spalten unterhalb: readxl::read_excel(n_max = ...)
+
+```{r almost_tidy_other_stuff_readxl1}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+readxl::read_excel(path,
+                   sheet = "notes",
+                   skip = 2,
+                   n_max = 33,
+                   col_types = c("guess", "guess", "skip")) %>%
+  drop_na()
+
+
+
+```
+
+Wenn Layout während Skripterstellung unbekannt: tidyxl::xlsx_cells(), um die Datengrenzen zu bestimmen, dann Argumente zu readxl::read_excel() entsprechend füllen.
+
+```{r almost_tidy_other_stuff_readxl2}
+
+cells <- xlsx_cells(path, sheet = "notes")
+rectify(cells)
+
+top_left <-
+  dplyr::filter(cells, character == "Name") %>%
+  select(row, col)
+top_left
+
+bottom_right <-
+  dplyr::filter(cells, data_type == "numeric") %>%
+  summarise(row = max(row), col = max(col))
+bottom_right
+
+skip <- top_left$row - 1L
+n_rows <- bottom_right$row - skip
+
+read_excel(path, sheet = "notes", skip = skip, n_max = n_rows)
+
+```
+
+
+```{r almost_tidy_other_stuff_tidyxl_unpivotr}
+
+cells %>%
+  dplyr::filter(between(row, top_left$row, bottom_right$row),
+         between(col, top_left$col, bottom_right$col)) %>%
+  select(row, col, data_type, character, numeric) %>%
+  behead("up", header) %>%
+  select(-col) %>%
+  spatter(header) %>%
+  select(-row)
+
+```
+
+### Inhaltlich bedeutsame Formatierungen
+
+Formatierungen müssen interpretiert werden.
+
+```{r Formatierungen1}
+
+# Blatt ohne Format-Infos lesen
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+x <- read_excel(path, sheet = "highlights")
+
+# Formatierungen aus einer Spalte lesen
+# Rückgabeformat von xlsx_formats(): genistete Liste! Extrem viel Info
+
+str(xlsx_formats(path), max.level = 2)
+
+fill_colours <- tidyxl::xlsx_formats(path)$local$fill$patternFill$fgColor$rgb
+
+# Alle Zellen lesen, Kopfzeile ausfiltern, Spalte fill_colour erzeugen, format_id nachschlagen
+
+fills <-
+  xlsx_cells(path, sheet = "highlights") %>%
+  dplyr::filter(row >= 2, col == 1) %>% # Omit the header row
+  mutate(fill_colour = fill_colours[local_format_id]) %>%
+  select(fill_colour)
+
+# Diese Spalte an die Daten anhängen
+
+bind_cols(x, fills) %>%
+  select(Age, Height, fill_colour)
+
+
+```
+
+Der Index local_format_id ist eine Variable aus xlsx_cells().
+
+Ergebnis: RGB-Wert; erste beiden Buchstaben: Transparenz.  
+Beispiel: FFFFFF00 ist FF (opaque = undurchsichtig) mit FFFF00 (gelb).
+
+Alternative nur mit tidyxl und unpivotr:
+
+```{r Formatierungen2}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+x <- read_excel(path, sheet = "highlights")
+
+fill_colours <- xlsx_formats(path)$local$fill$patternFill$fgColor$rgb
+
+fills <-
+  xlsx_cells(path, sheet = "highlights") %>%
+  dplyr::filter(row >= 2, col == 1) %>% # Omit the header row
+  mutate(fill_colour = fill_colours[local_format_id]) %>%
+  select(fill_colour)
+
+# Step 3: append the `fill` column to the rest of the data
+bind_cols(x, fills) %>%
+  select(Age, Height, fill_colour)
+
+```
+
 
 # Sich einen Datensatz erschließen: Explorative Datenanalyse
 
