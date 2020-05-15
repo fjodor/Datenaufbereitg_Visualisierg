@@ -325,11 +325,11 @@ cells %>%
 
 ```
 
-### Inhaltlich bedeutsame Formatierungen
+### Inhaltlich bedeutsame Zeilen-Formatierungen
 
 Formatierungen müssen interpretiert werden.
 
-```{r Formatierungen1}
+```{r Formatierungen_Zeile1}
 
 # Blatt ohne Format-Infos lesen
 path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
@@ -365,24 +365,185 @@ Beispiel: FFFFFF00 ist FF (opaque = undurchsichtig) mit FFFF00 (gelb).
 
 Alternative nur mit tidyxl und unpivotr:
 
-```{r Formatierungen2}
+```{r Formatierungen_Zeile2}
 
 path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
 x <- read_excel(path, sheet = "highlights")
 
 fill_colours <- xlsx_formats(path)$local$fill$patternFill$fgColor$rgb
 
-fills <-
-  xlsx_cells(path, sheet = "highlights") %>%
-  dplyr::filter(row >= 2, col == 1) %>% # Omit the header row
+xlsx_cells(path, sheet = "highlights") %>%
   mutate(fill_colour = fill_colours[local_format_id]) %>%
-  select(fill_colour)
-
-# Step 3: append the `fill` column to the rest of the data
-bind_cols(x, fills) %>%
-  select(Age, Height, fill_colour)
+  select(row, col, data_type, character, numeric, fill_colour) %>%
+  behead("up", header) %>%
+  select(-col, -character) %>%
+  spatter(header) %>%
+  select(-row)
 
 ```
+
+
+### Inhaltlich bedeutsame Zellen-Formatierungen
+
+Info bezieht sich nur auf Zelle, nicht auf ganze Zeile
+
+Lasse umständliche Variante mit readxl und dplyr weg ...
+
+```{r Formatierungen_Zelle1}
+
+fill_colours <- xlsx_formats(path)$local$fill$patternFill$fgColor$rgb
+
+cells <-
+  xlsx_cells(path, sheet = "annotations") %>%
+  mutate(fill_colour = fill_colours[local_format_id]) %>%
+  select(row, col, data_type, character, numeric, fill_colour)
+cells
+
+values <-
+  cells %>%
+  select(-fill_colour) %>%
+  behead("up", header) %>%
+  select(-col) %>%
+  spatter(header)
+values
+
+fills <-
+  cells %>%
+  behead("up", header) %>%
+  mutate(header = paste0(header, "_fill")) %>%
+  select(row, header, fill_colour) %>%
+  spread(header, fill_colour)
+fills
+
+left_join(values, fills, by = "row") %>%
+  select(-row)
+
+```
+
+
+"Extra tidy": Jede Zeile ist eine Beobachtung **einer Variable**. (Funktioniert am besten, wenn die Variablen den gleichen Datentyp aufweisen, sonst Umwandlung!)
+
+Sinn: Werte individueller Variablen statt individueller Beobachtungen können damit formiert werden.
+
+Lasse wieder die umständlichere Variante mit readxl und dplyr weg.
+
+```{r Formatierungen_Zelle_extra_tidy}
+
+fill_colours <- xlsx_formats(path)$local$fill$patternFill$fgColor$rgb
+
+xlsx_cells(path, sheet = "annotations") %>%
+  mutate(fill_colour = fill_colours[local_format_id]) %>%
+  select(row, col, data_type, character, numeric, fill_colour) %>%
+  behead("left", Name) %>%
+  behead("up", variable) %>%
+  select(-data_type, -character, value = numeric)
+
+```
+
+
+### Überlagerte bedeutsame Formatierungen
+
+Mehrfache Formatierungen, Beispiel:
+
+* gelb hervorgehoben: unsichere Daten
+* roter Text: Produkt nicht mehr verfügbar
+* beides: beides
+
+Nur die Lösung mit tidyxl und unpivotr
+
+```{r Formatierungen_überlagert}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+
+fill_colours <- xlsx_formats(path)$local$fill$patternFill$fgColor$rgb
+font_colours <- xlsx_formats(path)$local$font$color$rgb
+
+cells <-
+  xlsx_cells(path, sheet = "combined-highlights") %>%
+  mutate(fill_colour = fill_colours[local_format_id],
+         font_colour = font_colours[local_format_id]) %>%
+  select(row, col, data_type, character, numeric, fill_colour, font_colour) %>%
+  behead("up", header) %>%
+  behead("left", Name) %>%
+  select(-col, -character)
+
+values <-
+  cells %>%
+  select(-fill_colour, -font_colour) %>%
+  spread(header, numeric)
+
+formats <- distinct(cells, row, fill_colour, font_colour)
+
+left_join(values, formats, by = "row") %>%
+  select(-row)
+
+```
+
+
+### Hierarchien in der Formatierung
+
+Beispiel:
+
+* Keine Formatierung: gut
+* kursiv: zufriedenstellend
+* fett: schlecht
+* fett und kursiv: ungenügend
+
+Vorgehen: Formatierungen in unterschiedliche Spalten übernehmen, dann zu Gesamtspalte kombinieren (paste, case_when)
+
+Mit tidyxl und unpivotr
+
+```{r Formatierungen_Hierarchie}
+
+bold <- xlsx_formats(path)$local$font$bold
+italic <- xlsx_formats(path)$local$font$italic
+
+xlsx_cells(path, sheet = "highlight-hierarchy") %>%
+  mutate(bold = bold[local_format_id],
+         italic = italic[local_format_id]) %>%
+  mutate(grade = case_when(bold & italic ~ "fail",
+                           bold ~ "poor",
+                           italic ~ "satisfactory",
+                           TRUE ~ "good")) %>%
+  select(row, col, data_type, character, numeric, bold, italic, grade) %>%
+  behead("up", header) %>%
+  select(-col) %>%
+  spatter(header)
+
+```
+
+### Spezielle Kennungen (sentinel values) in Nicht-Text-Spalten
+
+* In readr kann man Zeichen als Fehlwerte definieren
+* Was dort nicht geht: Unterschiedliche _Arten_ von speziellen Werten definieren
+
+Beispiel, Statistics New Zealand:
+
+* ... = "Not applicable"
+* ..C = "Confidentialised"
+
+Die meisten Tools / Pakete werden beides als NA importieren oder die gesamte Spalte als Text behandeln.
+
+Beispiele für beides mit read_csv ...
+
+Besser: Kennungen in separate Spalte importieren, oder sogar TRUE / FALSE für jede Kennung ("Wächter") separat.
+
+Nur Lösung mit tidyxl und unpivotr: Funktion *isolate_sentinels()*
+
+```{r Sentinels}
+
+xlsx_cells(path, sheet = "sentinels") %>%
+  select(row, col, data_type, character, numeric) %>%
+  isolate_sentinels(character, c("NA", "…", "..C")) %>%
+  behead("left", Name) %>%
+  behead("up", variable) %>%
+  select(Name, variable, character, numeric, sentinel)
+
+
+```
+
+## Pivot-Tabellen
+
 
 
 # Sich einen Datensatz erschließen: Explorative Datenanalyse
