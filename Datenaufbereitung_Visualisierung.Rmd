@@ -528,7 +528,7 @@ Beispiele für beides mit read_csv ...
 
 Besser: Kennungen in separate Spalte importieren, oder sogar TRUE / FALSE für jede Kennung ("Wächter") separat.
 
-Nur Lösung mit tidyxl und unpivotr: Funktion *isolate_sentinels()*
+Nur Lösung mit tidyxl und unpivotr: Funktion *unpivotr::isolate_sentinels()*
 
 ```{r Sentinels}
 
@@ -544,6 +544,291 @@ xlsx_cells(path, sheet = "sentinels") %>%
 
 ## Pivot-Tabellen
 
+Hier sind tidyxl und unpivotr zu Hause ...
+
+* Def. Pivot-Tabellen: Mehr als eine Spalten- und / oder Zeilen-Überschrift
+* Benötigen weniger Platz auf dem Blatt und sind besser lesbar als tidy data
+* Für Software schwieriger zu verarbeiten
+* Uneindeutigkeit (*ambiguities*): oft unklar, ob eine Zelle zu einer Zeilen- / Spaltenüberschrift gehört oder Daten enthält
+
+==> Vorgehen in Einzelschritte aufteilen, nicht alles mit einer Mega-Funktion erschlagen
+
+1. Ermitteln, welche Zellen Überschriften / Köpfe (*headers*) sind und welche Daten enthalten
+2. Feststellen, wie sich die Daten auf die Tabellenköpfe beziehen
+
+Zu 1: Wird sehr vereinfacht durch tidyxl, mit mit unpivotr::as_cells()    
+--> Zelleneigenschaften; eine Zeile im Datensatz beschreibt eine Zelle des Excelblattes
+
+* Zeilen- und Spaltenposition --> danach kann man dann filtern
+
+Beispiel: Zwei Zeilen und zwei Spalten sind Köpfe
+
+Hier: readxl
+
+```{r pivot_annotations1}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+original <- read_excel(path, sheet = "pivot-annotations", col_names = FALSE)
+
+print(original, n = Inf)
+
+```
+
+
+Zum Vergleich: *tidyxl::xlsx_cells*. Nur ausgewählte Infos zur besseren Lesbarkeit
+
+```{r pivot_annotations2}
+
+cells <- xlsx_cells(path, sheets = "pivot-annotations")
+select(cells, row, col, data_type, character, numeric) %>%
+  print(cells, n = 20)
+
+```
+
+Zum Vergleich: *unpivotr::as_cells()*
+
+```{r pivot_annotations3}
+
+original <- read_excel(path, sheet = "pivot-annotations", col_names = FALSE)
+
+as_cells(original) %>%
+  arrange(row, col) %>%
+  print(n = 20)
+
+```
+
+Unterschiede:
+
+* read_excel() hat fehlende Zellen ergänzt, as_cells() behält diese
+* read_excel() hat alle Datentypen in character umgewandelt, während xlsx_cells() die ursprünglichen Datentypen behält
+
+Mit tidyxl kann man einfacher weiterarbeiten, da wir Positionen und Werte zu jeder Zelle kennen.
+
+```{r pivot_annotations4}
+
+dplyr::filter(cells, row == 2, !is_blank) %>%
+  select(row, col, character, numeric)
+
+dplyr::filter(cells, data_type == "numeric") %>%
+  select(row, col, numeric)
+
+```
+
+Im Folgenden: Wie können wir Beziehungen zwischen Tabellenköpfen und Datenzellen beschreiben? **unpivotr**
+
+
+### Einfache Pivot-Tabellen
+
+#### Zwei Zeilen mit Spaltenköpfen, linksbündig
+
+*unpivotr::behead()* nimmt eine Ebene Tabellenköpfe und ordnet sie den Daten zu. Ähnlich tidyr::gather(), aber:
+
+* funktioniert mit mehr als einer Kopfzeile bzw. Kopf-Spalte
+* funktioniert nur mit Objekten, die aus *unpivotr::as_cells()* oder *tidyxl::xlsx_cells()* kommen
+
+```{r unpivotr_311a}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <-
+  xlsx_cells(path, sheets = "pivot-annotations") %>%
+  dplyr::filter(col >= 4, !is_blank) %>% # Ignore the row headers in this example
+  select(row, col, data_type, character, numeric)
+all_cells
+
+```
+
+
+* Erste Zeile ist äußerer Kopf; "Female" und "Male" stehen oberhalb und links von den Daten-Zellen: "up-left"
+* Wir benennen die Köpfe: sex
+* Welche Spalte enthält die zugehörigen Werte: meist die *character*-Spalte
+
+```{r unpivotr_311b}
+
+all_cells %>%
+  behead("up-left", sex)
+
+```
+
+* Hälfte geschafft ... "Matilda" ist ein weiterer Tabellenkopf, kein Inhalt
+* Richtung diesmal "up"; Variablenname *name*
+
+```{r unpivotr_311c}
+
+all_cells %>%
+  behead("up-left", sex) %>%
+  behead("up", `name`)
+
+```
+
+Letzter Schritt: Bereinigung.
+
+```{r unpivotr_311d}
+
+all_cells %>%
+  behead("up-left", sex) %>%
+  behead("up", `name`) %>%
+  select(score = numeric, sex, `name`)
+
+```
+
+
+#### Zwei Zeilen UND SPALTEN mit Tabellenköpfen, linksbündig und oben
+
+Keine neuen Techniken, nur mehr Richtungen: "left", "left-up"
+
+```{r unpivotr_312a}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <-
+  xlsx_cells(path, sheets = "pivot-annotations") %>%
+  dplyr::filter(!is_blank) %>%
+  select(row, col, data_type, character, numeric) %>%
+  print()
+
+```
+
+```{r unpivotr_312b}
+
+all_cells %>%
+  behead("up-left", sex) %>%   # As before
+  behead("up", `name`) %>%     # As before
+  behead("left-up", field) %>% # Left-and-above
+  behead("left", subject) %>%  # Directly left
+  rename(score = numeric) %>%
+  select(-row, -col, -character)
+
+```
+
+
+#### Mehrere Zeilen und Spalten mit Köpfen sowie bedeutsame Formatierungen
+
+```{r unpivotr_313}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <-
+  xlsx_cells(path, sheets = "pivot-annotations") %>%
+  dplyr::filter(!is_blank) %>%
+  select(row, col, data_type, character, numeric) %>%
+  print()
+
+unpivoted <-
+  all_cells %>%
+  behead("up-left", sex) %>%   # As before
+  behead("up", `name`) %>%     # As before
+  behead("left-up", field) %>% # Left-and-above
+  behead("left", subject) %>%  # Directly left
+  rename(score = numeric) %>%
+  select(-character)                # Retain the row and col for now
+unpivoted
+
+# `formats` is a pallette of fill colours that can be indexed by the
+# `local_format_id` of a given cell to get the fill colour of that cell
+fill_colours <- xlsx_formats(path)$local$fill$patternFill$fgColor$rgb
+fill_colours
+
+# Import all the cells, filter out the header row, filter for the first column,
+# and create a new column `approximate` based on the fill colours, by looking up
+# the local_format_id of each cell in the `formats` pallette.
+annotations <-
+  xlsx_cells(path, sheets = "pivot-annotations") %>%
+  dplyr::filter(row >= 4, col >= 4) %>% # Omit the headers
+  mutate(fill_colour = fill_colours[local_format_id]) %>%
+  select(row, col, fill_colour)
+annotations
+
+left_join(unpivoted, annotations, by = c("row", "col")) %>%
+  select(-row, -col)
+
+```
+
+
+#### Köpfe und Notizen in Zeilen / Spalten vermischt
+
+```{r unpivotr_314a}
+
+# Error: object formats fehlt
+
+# cells <- xlsx_cells(path, sheets = "pivot-annotations")
+# 
+# cells %>%
+#   behead_if(formats$local$font$bold[local_format_id], # true for bold cells
+#             str_detect(character, "^Country: "),      # true for "Country: ..."
+#             direction = "left-up",                    # argument must be named
+#             name = "country_name") %>%
+#   dplyr::filter(col != 1L)                            # discard remaining cells
+
+```
+
+```{r unpivotr_314b}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+formats <- xlsx_formats(path)
+
+italic <- formats$local$font$italic
+
+# For 'red' we can either look for the RGB code for red "FFFF0000"
+red <- "FFFF0000"
+
+# Or we can find out what that code is by starting from a cell that we know is
+# red.
+red_cell_format_id <-
+  xlsx_cells(path, sheets = "pivot-notes") %>%
+  dplyr::filter(row == 5, col == 2) %>%
+  pull(local_format_id)
+red_cell_format_id
+
+red <- formats$local$font$color$rgb[red_cell_format_id]
+red
+
+cells <-
+  xlsx_cells(path, sheets = "pivot-notes") %>%
+  dplyr::filter(!is_blank) %>%
+  select(row, col, data_type, character, numeric, local_format_id) %>%
+  print()
+
+cells %>%
+  behead_if(!italic[local_format_id],                             # not italic
+            direction = "up-left",
+            name = "sex") %>%
+  dplyr::filter(row != min(row)) %>% # discard non-header cells
+  behead("up", "name") %>%
+  behead_if(formats$local$font$color$rgb[local_format_id] != red, # not red
+            direction = "left-up",
+            name = "field") %>%
+  dplyr::filter(col != min(col)) %>% # discard non-headere cells
+  behead("left", "subject") %>%
+  select(sex, name, field, subject, score = numeric)
+
+
+```
+
+
+#### Unterschiedliche Kopf-Ebenen in gleicher Zeile / Spalte: Formatierungen
+
+* Einrückung (*indentation*) zählt auch als Formatierung
+
+```{r unpivotr_315}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+formats <- xlsx_formats(path)
+
+formats$local$alignment$indent
+
+cells <-
+  xlsx_cells(path, sheets = "pivot-hierarchy") %>%
+  dplyr::filter(!is_blank) %>%
+  select(row, col, data_type, character, numeric, local_format_id) %>%
+  print()
+
+cells %>%
+  behead_if(formats$local$alignment$indent[local_format_id] == 0,
+            direction = "left-up",
+            name = "field") %>%
+  behead("left", "subject") %>%
+  behead("up", "name") %>%
+  select(field, subject, name, score = numeric)
+
+```
 
 
 # Sich einen Datensatz erschließen: Explorative Datenanalyse
