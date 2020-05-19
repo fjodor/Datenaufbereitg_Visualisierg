@@ -831,6 +831,482 @@ cells %>%
 ```
 
 
+### Komplexe Pivot-Tabellen
+
+*behead()* trifft Annahmen und kann keine Formatierungen lesen.   
+Mächtigeres Werkzeug: *enhead()*: fügt zwei separate Datensätze zusammen - Daten-Zellen und Kopf-Zellen
+
+Schritte:
+1. Herausfinden, welche Zellen Köpfe und welche Daten enthalten
+2. Beschreiben, wie sich die Daten auf die Köpfe beziehen.
+
+#### Zwei Kopfzeilen, linksbündig (wie im vorigen Kapitel!)
+
+Schritt 1 benötigt lediglich Filterung:
+
+```{r unpivotr_321a}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <-
+  xlsx_cells(path, sheets = "pivot-annotations") %>%
+  dplyr::filter(col >= 4, !is_blank) %>% # Ignore the row headers in this example
+  select(row, col, data_type, character, numeric) %>%
+  print()
+
+```
+
+Wir können die Zellen in ihrer ursprünglichen Position auf dem Excelblatt anzeigen:
+
+```{r unpivotr_321b}
+
+rectify(all_cells)
+
+```
+
+```{r unpivotr_321c}
+
+first_header_row <-
+  dplyr::filter(all_cells, row == 2) %>%
+  select(row, col, sex = character)
+  # the title of this header is 'sex'
+  # the cells are text cells (`"Female"` and `"Male"`) so take the value in the
+  # '`character` column.
+first_header_row
+
+second_header_row <-
+  dplyr::filter(all_cells, row == 3) %>%
+  select(row, col, name = character)
+  # The title of this header is 'name'.
+  # The cells are text cells, so take the value in the '`character` column.
+second_header_row
+
+```
+
+```{r unpivotr_321d}
+
+data_cells <-
+  dplyr::filter(all_cells, data_type == "numeric") %>%
+  select(row, col, score = numeric)
+  # The data is exam scores in certain subjects, so give the data that title.
+  # The data is numeric, so select only that 'value'.  If some of the data was
+  # also text or true/false, then you would select the `character` and `logical`
+  # columns as well as `numeric`
+
+```
+
+Zweiter Schritt: Beschreiben, wie sich die Daten-Zellen auf die Köpfe beziehen.
+
+```{r unpivotr_321e}
+
+enhead(data_cells, second_header_row, "up")
+enhead(data_cells, first_header_row, "up-left")
+
+```
+
+Finalen, vollständigen "tidy" Datensatz erzeugen
+
+```{r unpivotr_321f}
+
+data_cells %>%
+  enhead(first_header_row, "up-left") %>%
+  enhead(second_header_row, "up") %>%
+  select(-row, -col)
+
+```
+
+
+#### Zwei Spalten mit Tabellenköpfen, oben ausgerichtet
+
+Fast wie eben, nur mit anderen Richtungen: "left" und "left-up". ("up-left" = "left up" in enhead(), aber nicht in behead()!)
+
+```{r unpivotr_322}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <-
+  xlsx_cells(path, sheets = "pivot-annotations") %>%
+  dplyr::filter(row >= 3, !is_blank) %>% # Ignore the column headers in this example
+  select(row, col, data_type, character, numeric) %>%
+  print()
+
+rectify(all_cells)
+
+first_header_col <-
+  dplyr::filter(all_cells, col == 2) %>%
+  select(row, col, field = character)
+  # the title of this header is 'field', meaning 'group of subjects'.
+  # The cells are text cells (`"Humanities"`, `"Performance"`) so take the value
+  # in the '`character` column.
+first_header_col
+
+second_header_col <-
+  dplyr::filter(all_cells, col == 3) %>%
+  select(row, col, subject = character)
+  # The title of this header is 'subject'
+  # The cells are text cells (`"history"`, etc.) so take the value in the
+  # '`character` column.
+second_header_col
+
+data_cells <-
+  dplyr::filter(all_cells, data_type == "numeric") %>%
+  select(row, col, score = numeric)
+  # The data is examp scores in certain subjects, so give the data that title.
+  # The data is numeric, so select only that 'value'.  If some of the data was
+  # also text or true/false, then you would select the `character` and `logical`
+  # columns as well as `numeric`
+
+data_cells %>%
+  enhead(first_header_col, "left-up") %>%
+  enhead(second_header_col, "left") %>%
+  select(-row, -col)
+
+```
+
+
+#### Zwei Zeilen UND SPALTEN mit Tabellenköpfen, linksbündig und oben {#Zeilen_Spalten}
+
+```{r unpivotr_323}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <-
+  xlsx_cells(path, sheets = "pivot-annotations") %>%
+  dplyr::filter(!is_blank) %>%
+  select(row, col, data_type, character, numeric) %>%
+  print()
+
+rectify(all_cells)
+
+first_header_row <-
+  dplyr::filter(all_cells, row == 2) %>%
+  select(row, col, sex = character)
+  # the title of this header is 'sex'
+  # the cells are text cells (`"Female"` and `"Male"`) so take the value in the
+  # '`character` column.
+first_header_row
+
+second_header_row <-
+  dplyr::filter(all_cells, row == 3) %>%
+  select(row, col, name = character)
+  # The title of this header is 'name'.
+  # The cells are text cells, so take the value in the '`character` column.
+second_header_row
+
+first_header_col <-
+  dplyr::filter(all_cells, col == 2) %>%
+  select(row, col, field = character)
+  # the title of this header is 'field', meaning 'group of subjects'.
+  # The cells are text cells (`"Humanities"`, `"Performance"`) so take the value
+  # in the '`character` column.
+first_header_col
+
+second_header_col <-
+  dplyr::filter(all_cells, col == 3) %>%
+  select(row, col, subject = character)
+  # The title of this header is 'subject'
+  # The cells are text cells (`"history"`, etc.) so take the value in the
+  # '`character` column.
+second_header_col
+
+data_cells <-
+  dplyr::filter(all_cells, data_type == "numeric") %>%
+  select(row, col, score = numeric)
+  # The data is examp scores in certain subjects, so give the data that title.
+  # The data is numeric, so select only that 'value'.  If some of the data was
+  # also text or true/false, then you would select the `character` and `logical`
+  # columns as well as `numeric`
+
+data_cells %>%
+  enhead(first_header_row, "up-left") %>%
+  enhead(second_header_row, "up") %>%
+  enhead(first_header_col, "left-up") %>%
+  enhead(second_header_col, "left") %>%
+  select(-row, -col)
+
+```
+
+
+#### Zentrierte Tabellenköpfe
+
+Trick: *justify()*, um die Tabellenköpfe links und oben auszurichten. Dann weiter wie oben.
+
+```{r unpivotr_324}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <- xlsx_cells(path, sheets = "pivot-centre-aligned")
+rectify(all_cells)
+
+all_cells <-
+  xlsx_cells(path, sheets = "pivot-centre-aligned") %>%
+  select(row, col, is_blank, data_type, character, numeric, local_format_id)
+
+formats <- xlsx_formats(path)
+top_borders <- which(!is.na(formats$local$border$top$style))
+left_borders <- which(!is.na(formats$local$border$left$style))
+
+first_header_row_corners <-
+  dplyr::filter(all_cells, row == 2, local_format_id %in% left_borders) %>%
+  select(row, col)
+first_header_row_corners
+
+first_header_col_corners <-
+  dplyr::filter(all_cells, col == 2, local_format_id %in% top_borders) %>%
+  select(row, col)
+first_header_col_corners
+
+first_header_row <-
+  dplyr::filter(all_cells, !is_blank, row == 2) %>%
+  select(row, col, sex = character)
+  # the title of this header is 'sex'
+  # the cells are text cells (`"Female"` and `"Male"`) so take the value in the
+  # '`character` column.
+first_header_row
+
+first_header_col <-
+  dplyr::filter(all_cells, !is_blank, col == 2) %>%
+  select(row, col, field = character)
+  # the title of this header is 'field', meaning 'group of subjects'.
+  # The cells are text cells (`"Humanities"`, `"Performance"`) so take the value
+  # in the '`character` column.
+first_header_col
+
+first_header_row <- justify(first_header_row, first_header_row_corners)
+first_header_col <- justify(first_header_col, first_header_col_corners)
+
+first_header_row
+first_header_col
+
+```
+
+... dann weiter wie oben: [Zwei Zeilen- und Spaltenköpfe, links und oben ausgerichtet](#Zeilen_Spalten)
+
+
+#### Mehrfache Zeilen- und Spaltenköpfe mit bedeutsamen Formatierungen
+
+Vorgehen:
+
+1. Zeilen- und Spaltenköpf entschlüsseln (*un-pivoting*), aber Variablen *row* und *col* jeder Zelle bewahren.
+2. Formatierungen jeder Zelle einsammeln
+3. Daten und Formatierungen zusammenführen
+
+```{r unpivotr_325}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <-
+  xlsx_cells(path, sheets = "pivot-annotations") %>%
+  dplyr::filter(!is_blank) %>%
+  select(row, col, data_type, character, numeric) %>%
+  print()
+
+rectify(all_cells)
+
+first_header_row <-
+  dplyr::filter(all_cells, row == 2) %>%
+  select(row, col, sex = character)
+  # the title of this header is 'sex'
+  # the cells are text cells (`"Female"` and `"Male"`) so take the value in the
+  # '`character` column.
+first_header_row
+
+second_header_row <-
+  dplyr::filter(all_cells, row == 3) %>%
+  select(row, col, name = character)
+  # The title of this header is 'name'.
+  # The cells are text cells, so take the value in the '`character` column.
+second_header_row
+
+first_header_col <-
+  dplyr::filter(all_cells, col == 2) %>%
+  select(row, col, field = character)
+  # the title of this header is 'field', meaning 'group of subjects'.
+  # The cells are text cells (`"Humanities"`, `"Performance"`) so take the value
+  # in the '`character` column.
+first_header_col
+
+second_header_col <-
+  dplyr::filter(all_cells, col == 3) %>%
+  select(row, col, subject = character)
+  # The title of this header is 'subject'
+  # The cells are text cells (`"history"`, etc.) so take the value in the
+  # '`character` column.
+second_header_col
+
+data_cells <-
+  dplyr::filter(all_cells, data_type == "numeric") %>%
+  select(row, col, score = numeric)
+  # The data is exam scores in certain subjects, so give the data that title.
+  # The data is numeric, so select only that 'value'.  If some of the data was
+  # also text or true/false, then you would select the `character` and `logical`
+  # columns as well as `numeric`
+
+unpivoted <-
+  data_cells %>%
+  enhead(first_header_row, "up-left") %>%
+  enhead(second_header_row, "up") %>%
+  enhead(first_header_col, "left-up") %>%
+  enhead(second_header_col, "left")
+  # Don't delete the `row` and `col` columns yet, because we need them to join on
+  # the formatting
+
+# `formats` is a pallette of fill colours that can be indexed by the
+# `local_format_id` of a given cell to get the fill colour of that cell
+fill_colours <- xlsx_formats(path)$local$fill$patternFill$fgColor$rgb
+
+# Import all the cells, filter out the header row, filter for the first column,
+# and create a new column `approximate` based on the fill colours, by looking up
+# the local_format_id of each cell in the `formats` pallette.
+annotations <-
+  xlsx_cells(path, sheets = "pivot-annotations") %>%
+  dplyr::filter(row >= 4, col >= 4) %>% # Omit the headers
+  mutate(fill_colour = fill_colours[local_format_id]) %>%
+  select(row, col, fill_colour)
+annotations
+
+left_join(unpivoted, annotations, by = c("row", "col")) %>%
+  select(-row, -col)
+
+```
+
+
+#### Köpfe und Anmerkungen gemischt, unterschieden durch Formatierung
+
+Keine neuen Techniken. Trick: Beim Entschlüsseln der Zeilen- und Spaltenköpfe die "falschen" ausfiltern, die keine Köpfe darstellen.
+
+S. nacnudus 3.2.6
+https://nacnudus.github.io/spreadsheet-munging-strategies/pivot-complex.html#mixed-headers-and-notes-in-the-same-rowcolumn-distinguished-by-formatting-1
+
+
+#### Gemische EBENEN von Köpfen in derselben Zeile / Spalte, unterschieden durch Formatierung
+
+S. nacnudus 3.2.7
+https://nacnudus.github.io/spreadsheet-munging-strategies/pivot-complex.html#mixed-levels-of-headers-in-the-same-rowcolumn-distinguished-by-formatting-1
+
+
+#### Wiederholte Kopf-Zeilen / -Spalten innerhalb der Tabelle
+
+Trick: Wiederholungen ignorieren
+
+```{r unpivotr_328}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <-
+  xlsx_cells(path, sheets = "pivot-repeated-headers") %>%
+  dplyr::filter(!is_blank) %>%
+  select(row, col, data_type, character, numeric) %>%
+  print()
+
+rectify(all_cells)
+
+# The 'term' headers appear four times, but only the first one is needed.
+term <-
+  dplyr::filter(all_cells, row == 2) %>%
+  select(row, col, term = character)
+  # the title of this header is 'field', meaning 'group of subjects'.
+  # The cells are text cells (`"Humanities"`, `"Performance"`) so take the value
+  # in the '`character` column.
+term
+
+subject <-
+  dplyr::filter(all_cells, col == 2) %>%
+  select(row, col, subject = character)
+  # The title of this header is 'subject'
+  # The cells are text cells (`"history"`, etc.) so take the value in the
+  # '`character` column.
+subject
+
+name <-
+  dplyr::filter(all_cells, col == 3) %>%
+  select(row, col, name = character)
+  # The title of this header is 'name'.
+  # The cells are text cells, so take the value in the '`character` column.
+name
+
+# The data cells are distinguished from the 'term' headers by their data type --
+# the data cells are numeric, whereas the term headers are character.
+data_cells <-
+  dplyr::filter(all_cells, data_type == "numeric") %>%
+  select(row, col, score = numeric)
+  # The data is exam scores in certain subjects, so give the data that title.
+  # The data is numeric, so select only that 'value'.  If some of the data was
+  # also text or true/false, then you would select the `character` and `logical`
+  # columns as well as `numeric`
+data_cells
+
+data_cells %>%
+  enhead(term, "up") %>%
+  enhead(subject, "up-left") %>%
+  enhead(name, "left") %>%
+  select(-row, -col)
+
+```
+
+
+#### Tabellenköpfe (Überschriften) innerhalb der Tabelle
+
+Vorgehen: So tun als wären es Zeilen-Überschriften, mit "left-up"-Richtung arbeiten.
+
+```{r unpivotr_329}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <-
+  xlsx_cells(path, sheets = "pivot-header-within-data") %>%
+  dplyr::filter(!is_blank) %>%
+  select(row, col, data_type, character, numeric, local_format_id) %>%
+  print()
+
+rectify(all_cells)
+
+bold <- which(xlsx_formats(path)$local$font$bold)
+
+# The subject headers, though mixed with the data and the 'term' headers, are
+# distinguishable by the data type "character" and by being bold.
+subject <-
+  dplyr::filter(all_cells,
+         col == 3,
+         data_type == "character",
+         local_format_id %in% bold) %>%
+  select(row, col, subject = character)
+  # The title of this header is 'subject'
+  # The cells are text cells (`"history"`, etc.) so take the value in the
+  # '`character` column.
+subject
+
+# We only need one set of the 'term' headers
+term <-
+  dplyr::filter(all_cells, row == 3, data_type == "character") %>%
+  select(row, col, term = character)
+  # the title of this header is 'field', meaning 'group of subjects'.
+  # The cells are text cells (`"Humanities"`, `"Performance"`) so take the value
+  # in the '`character` column.
+term
+
+name <-
+  dplyr::filter(all_cells, col == 2) %>%
+  select(row, col, name = character)
+  # The title of this header is 'name'.
+  # The cells are text cells, so take the value in the '`character` column.
+name
+
+# The data cells are distinguished from the 'subject' headers by their data
+# type -- the data cells are numeric, whereas the term headers are character.
+data_cells <-
+  dplyr::filter(all_cells, data_type == "numeric") %>%
+  select(row, col, score = numeric)
+  # The data is exam scores in certain subjects, so give the data that title.
+  # The data is numeric, so select only that 'value'.  If some of the data was
+  # also text or true/false, then you would select the `character` and `logical`
+  # columns as well as `numeric`
+data_cells
+
+data_cells %>%
+  enhead(subject, "left-up") %>%
+  enhead(term, "up") %>%
+  enhead(name, "left") %>%
+  select(-row, -col)
+
+
+```
+
+
+
 # Sich einen Datensatz erschließen: Explorative Datenanalyse
 
 * skimr
