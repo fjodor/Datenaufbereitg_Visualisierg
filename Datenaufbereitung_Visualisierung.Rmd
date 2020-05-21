@@ -1305,6 +1305,192 @@ data_cells %>%
 
 ```
 
+## "Small multiples": Kleine, vervielfältigte Tabellen
+
+Üblicher bei Grafiken (ggplot2 facets), auch auf Arbeitsblättern anzutreffen.
+
+Vorgehen:
+1. Code für den Import einer Tabelle
+2. Code in Funktion packen
+3. Arbeitsblatt so aufteilen, dass jede Tabelle auf einem Abschnitt liegt
+4. Die Funktion auf die Abschnitte anwenden
+
+
+### Jede Tabelle enthält alle Tabellenköpfe
+
+```{r unpivotr_41}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <-
+  xlsx_cells(path, sheets = "small-multiples") %>%
+  dplyr::filter(!is_blank) %>%
+  select(row, col, data_type, character, numeric, local_format_id)
+
+table1 <- dplyr::filter(all_cells, row %in% 1:4, col %in% 1:3)
+
+rectify(table1)
+
+table1 %>%
+  behead("up-left", subject) %>%
+  behead("up", header) %>%
+  select(-col, -local_format_id) %>%
+  spatter(header) %>%
+  select(-row)
+
+# Code in Funktion packen
+
+unpivot <- function(cells) {
+  cells %>%
+    behead("up-left", subject) %>%
+    behead("up", header) %>%
+    select(-col, -local_format_id) %>%
+    spatter(header) %>%
+    select(-row)
+}
+
+formats <- xlsx_formats(path)
+str(formats, max.level = 2)
+
+italic <- which(formats$local$font$italic)
+
+corners <-
+  all_cells %>%
+  dplyr::filter(local_format_id %in% italic) %>%
+  select(row, col)
+
+partitions <- partition(all_cells, corners)
+partitions
+
+partitions %>%
+  mutate(cells = map(cells, unpivot)) %>%
+  unnest() %>%
+  select(-corner_row, -corner_col)
+
+```
+
+From ?partition:
+Given the positions of corner cells that mark individual tables in a single spreadsheet, *partition()* works out which table cells belong to which corner cells. The individual tables can then be worked on independently.
+
+*partition()* partitions along both dimensions (rows and columns) at once. *partition_dim()* partitions along one dimension at a time.
+
+
+### Gleiche Tabelle auf mehreren Blättern / in mehreren Dateien
+
+*xlsx_cells()* kann mehrere Blätter gleichzeitig verarbeiten. Namen angeben; wenn keine Namen: alle Blätter werden importiert.
+
+*tidyxl* verarbeitet das Blatt (*sheet*) als weitere Koordinate neben *row* und *col*.
+
+```{r unpivotr_42}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <-
+  xlsx_cells(path, sheets = c("humanities", "performance")) %>%
+  dplyr::filter(!is_blank) %>%
+  select(sheet, row, col, data_type, character, numeric)
+all_cells
+
+# tidyr::nest()
+
+all_cells %>%
+  nest(-sheet)
+
+unpivot <- function(cells) {
+  cells %>%
+    behead("up", name) %>%
+    behead("left", subject)
+}
+
+all_cells %>%
+  nest(-sheet) %>%
+  mutate(data = map(data, unpivot)) %>%
+  unnest()
+
+all_cells %>%
+  nest(-sheet) %>%
+  mutate(data = map(data, unpivot)) %>%
+  unnest() %>%
+  transmute(field = sheet,
+            name,
+            subject,
+            score = numeric)
+
+```
+
+
+### Gleiche Tabelle auf mehreren Blättern, aber in unterschiedlichen Positionen
+
+Funktion für *unpivot* muss die Tabelle zuerst finden.
+
+```{r unpivotr_43}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <-
+  xlsx_cells(path, sheets = c("female", "male")) %>%
+  dplyr::filter(!is_blank) %>%
+  select(sheet, row, col, data_type, character, numeric)
+all_cells
+
+unpivot <- function(cells) {
+  cells %>%
+    dplyr::filter(character == "Subject") %>%
+    pull(row) %>%
+    {dplyr::filter(cells, row >= .)} %>%
+    behead("up", name) %>%
+    behead("left", subject)
+}
+
+all_cells %>%
+  nest(-sheet) %>%
+  mutate(data = map(data, unpivot)) %>%
+  unnest() %>%
+  select(sex = sheet, name, subject, score = numeric)
+
+
+```
+
+
+### Implizite Vielfache
+
+* Sehen aus wie einzelne Tabelle
+* Kopf-Infos erscheinen mehrfach
+
+Im Beispiel: "Grade" wird wiederholt
+
+* Gehört zum jeweiligen übergeordneten Kopf "Classics", "History", "Music", "Drama"
+* Doppelte Funktion: Titel der Einzeltabelle (*small multiple*) sowie als "Punktzahl" (*score*) der jeweiligen Spalte
+* --> Herausforderung: "Grade" auf die richtige Punktzahl beziehen
+
+Vorgehen:
+1. Nach "Classics", "History", "Music", "Drama" filtern
+2. Diese einer Variable zuordnen, auf die später *enhead()* angewendet wird
+3. *behead()* der originalen "Classics", "History" etc. Zellen und diese mit "Score" überschreiben
+
+```{r unpivotr_44}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+all_cells <-
+  xlsx_cells(path, sheets = "implied-multiples") %>%
+  dplyr::filter(!is_blank) %>%
+  select(row, col, data_type, character, numeric)
+
+subjects <-
+  all_cells %>%
+  dplyr::filter(col >= 2, row == 2, character != "Grade") %>%
+  select(row, col, subject = character)
+subjects
+
+all_cells %>%
+  behead("up-left", "field") %>%
+  behead("up", "header") %>%
+  behead("left", "name") %>%
+  enhead(subjects, "up-left") %>% # Reattach the filtered subject headers
+  mutate(header = if_else(header == "Grade", header, "Score")) %>%
+  select(-col) %>%
+  spatter(header) %>%
+  select(-row)
+
+```
+
 
 
 # Sich einen Datensatz erschließen: Explorative Datenanalyse
