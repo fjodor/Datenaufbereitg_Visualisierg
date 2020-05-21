@@ -1491,6 +1491,74 @@ all_cells %>%
 
 ```
 
+## Formatierungen
+
+Bis hier wurden bereits Formatierungen verwendet; hier Detail-Erklärungen. Motivation: Umgang mit hochgestellten Symbolen.
+
+* Vektor mit den Formaten extrahieren
+* *style_format* oder *local_format_id* einer Zelle nachschlagen
+
+```{r unpivotr_51a}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+cells <-
+  xlsx_cells(path, sheet = "formatting") %>%
+  select(row, col, character, style_format, local_format_id)
+cells
+
+# Ist eine Zelle fett?
+
+formats <- xlsx_formats(path)
+bold <- formats$local$font$bold # The list of lists of lists of vectors
+bold
+
+mutate(cells, bold = bold[local_format_id])
+
+```
+
+Warum ist die Liste aus *xlsx_formats()* so kompiziert? Viele Formatierungsoptionen. Beispiel Rahmen (*borders*): 40 Variablen ... Excel vergibt stattdessen IDs für Kombinationen von Formatierungen. Jede Zelle wird mit **einer** solchen ID beschrieben. ==> Zwei Zellen mit Fettschrift können unterschiedliche IDs haben, wenn die zweite z. B. auch kursiv gesetzt ist.
+
+Hierarchie der Formatierungen:
+
+1. Stil: *xlsx_formats()$style*. Damit kann man **alle** als normal formatierten Zellen *auf ein Mal* ändern.
+2. Lokal: *xlsx_formats()$local*. Bezieht sich auf eine einzelne Zelle. Gleiche Struktur wie *style*.
+
+
+### Formatierungen einer Zelle ermitteln
+
+```{r unpivotr_51b}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+cells <-
+  xlsx_cells(path, sheet = "formatting") %>%
+  select(row, col, character, style_format, local_format_id) %>%
+  dplyr::filter(row == 1, col == 1)
+cells
+
+formats <- xlsx_formats(path)
+
+local_bold <- formats$local$font$bold
+local_bold
+
+style_bold <- formats$style$font$bold
+style_bold
+
+mutate(cells,
+       style_bold = style_bold[style_format],
+       local_bold = local_bold[local_format_id])
+
+```
+
+Meist arbeitet man eher mit der lokalen Formatierung. *styles* nur relevant, wenn Stile für ein gesamtes Blatt genutzt werden (selten) und man lokale Modifikationen des Stils ignorieren möchte.
+
+Bedingte Formatierungen wurden absichtlich weggelassen. Sie *reagieren* nur auf Zellenwerte und enthalten daher keine *neuen* Informationen.
+
+
+### 
+
+
+# Datums- und Zeitfelder
+
 
 
 # Sich einen Datensatz erschließen: Explorative Datenanalyse
@@ -1509,6 +1577,7 @@ all_cells %>%
 
 * Beispiel für fct_lump_*, z. B. Autozulassungen
 * Textanalyse-Beispiel
+
 
 # Umgang mit Fehlwerten
 
