@@ -1,5 +1,5 @@
 ---
-title: "Datenaufbereitung und Visualisierung mit R"
+title: "Datenaufbereitung und Visualisierung mit R\nDatenimport aus Excel"
 author: "WR"
 date: "Bearbeitungsstand: `r Sys.time()`"
 output: 
@@ -150,7 +150,7 @@ Hunderassen2
 
 ```
 
-Der entscheidende Trick hier ist der reguläre Ausdruck **\^\\(**. **^** sucht am Anfang des Strings, und zwar nach einer geöffneten runden Klammer, die mit zwei Backslashes *maskiert* werden muss, da sie sonst eine andere Bedeutung innerhalb der regulären Ausdrücke hätte (Beispiele dafür sehen wir später: Es geht um Zeichengruppen): **\\\\(**.
+Der entscheidende Trick hier ist der reguläre Ausdruck **\^\\\\(**. **^** sucht am Anfang des Strings, und zwar nach einer geöffneten runden Klammer, die mit zwei Backslashes *maskiert* werden muss, da sie sonst eine andere Bedeutung innerhalb der regulären Ausdrücke hätte (Beispiele dafür sehen wir später: Es geht um Zeichengruppen): **\\\\(**.
 
 Nächster Schritt: Die Zellformatierung aus der Spalte *breed* (Hunderasse) entfernen - wieder mit regex.
 
@@ -269,6 +269,7 @@ xlsx_cells(path, sheet = "transposed") %>%
 Es wird komplizierter, wenn die Daten nicht in Zelle A1 beginnen.
 
 Wenn man das genaue Layout kennt:
+
 * leere Zeilen oberhalb: readxl::read_excel(skip = ...)
 * leere Spalten: readxl::read_excel(col_types = ...)
 * leere Spalten unterhalb: readxl::read_excel(n_max = ...)
@@ -1600,7 +1601,7 @@ Möglichkeiten sind deutlich stärker begrenzt --> Datensatz mit vorgegebenen Sp
 
 Ein Datensatz **pro Zelle**, diese werden in einer "Listen-Variable" *character_formatted* gespeichert.
 
-```{r}
+```{r unpivotr_53}
 
 path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
 xlsx_cells(path, sheet = "in-cell formatting") %>%
@@ -1615,35 +1616,58 @@ xlsx_cells(path, sheet = "in-cell formatting") %>%
 
 ```
 
-### 
+### Mehrere Infos in einer Zelle, mit bedeutungsvollen Formatierungen
 
+![Mehrere Infos in einer Zelle](in-cell-formatting.png)
 
-# Datums- und Zeitfelder
+Basiert auf realem Beispiel!
 
+```{r unpivotr_54a}
 
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+xlsx_cells(path, sheet = "in-cell formatting") %>%
+  dplyr::filter(address != "A1") %>%
+  rectify()
 
-# Sich einen Datensatz erschließen: Explorative Datenanalyse
+```
+ID-Spalte enthält:
 
-* skimr
-* DataExplorer
-* GGAlly
+* Produkt-ID
+* Test vs. Produktion
+* Formatierung: rot, durchgestrichen bedeutet Fehler
 
+Generelle Lösung: **unnesting** wie oben; einfacher: map über genisteten Datensatz; eine Info herausziehen
 
-# Daten aus mehreren Quellen zusammenfügen
+```{r unpivotr_54b}
 
-* dplyr, two table verbs: join-Familie
+strikethrough <-
+  xlsx_cells(path, sheet = "in-cell formatting") %>%
+  dplyr::filter(address != "A1", col == 1) %>%
+  mutate(strikethrough = map_lgl(character_formatted, ~ any(.x$strike))) %>%
+  select(row, col, character, strikethrough)
 
+```
 
-# Arbeiten mit Texten (Strings und Factors)
+Diese Info dann zu den restlichen Daten hinzuspielen:
 
-* Beispiel für fct_lump_*, z. B. Autozulassungen
-* Textanalyse-Beispiel
+```{r unpivotr_54c}
 
+cells <-
+  xlsx_cells(path, sheet = "in-cell formatting") %>%
+  dplyr::filter(address != "A1") %>%
+  select(row, col, data_type, character, numeric)
 
-# Umgang mit Fehlwerten
+strikethrough <-
+  xlsx_cells(path, sheet = "in-cell formatting") %>%
+  dplyr::filter(address != "A1", col == 1) %>%
+  mutate(strikethrough = map_lgl(character_formatted, ~ any(.x$strike))) %>%
+  select(row, strikethrough)
 
-* Einige Base R-Funktionen
-* naniar
-* simputation
-* Evtl. Imputation mit caret?
+left_join(cells, strikethrough, by = "row") %>%
+  behead("up", header) %>%
+  select(-col) %>%
+  spatter(header) %>%
+  select(ID, strikethrough, Count)
+
+```
 

@@ -1,0 +1,50 @@
+---
+title: "Datenaufbereitung und Visualisierung mit R\nMaster - Gliederung"
+author: "WR"
+date: "Bearbeitungsstand: `r Sys.time()`"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 4
+    toc_float:
+      collapsed: false
+    code_folding: show
+---
+
+```{r setup, include = FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+# load("Alben.Rda")
+```
+
+# Datums- und Zeitfelder
+
+
+
+# Sich einen Datensatz erschließen: Explorative Datenanalyse
+
+* skimr
+* DataExplorer
+* GGAlly
+
+
+# Daten aus mehreren Quellen zusammenfügen
+
+* dplyr, two table verbs: join-Familie
+
+
+# Arbeiten mit Texten (Strings und Factors)
+
+* Beispiel für fct_lump_*, z. B. Autozulassungen
+* Textanalyse-Beispiel
+
+
+# Umgang mit Fehlwerten
+
+* Einige Base R-Funktionen
+* naniar
+* simputation
+* Evtl. Imputation mit caret?
+
