@@ -1636,7 +1636,7 @@ ID-Spalte enthält:
 * Test vs. Produktion
 * Formatierung: rot, durchgestrichen bedeutet Fehler
 
-Generelle Lösung: **unnesting** wie oben; einfacher: map über genisteten Datensatz; eine Info herausziehen
+Generelle Lösung: *unnesting* wie oben; einfacher: map über genisteten Datensatz; eine Info herausziehen
 
 ```{r unpivotr_54b}
 
@@ -1670,4 +1670,122 @@ left_join(cells, strikethrough, by = "row") %>%
   select(ID, strikethrough, Count)
 
 ```
+
+
+## Hochgestellte Symbole
+
+![Hochgestellte Symbole](superscript-symbols.png)
+
+Gefährliche Situation: Welche Punktzahl hat Paula erreicht?
+
+```{r unpivotr_55a}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+read_excel(path, sheet = "superscript symbols")
+
+```
+
+Richtige Antwort: Es war nicht Paula, sondern Paul.
+
+Spalte "Score" wurde als *character* formatiert, sodass die hochgestellte 1 eingetragen werden konnte; Excel erlaubt keine hochgestellten Symbole in numerischen Zellen! Man könnte das leicht für einen Fehler halten und mit as.integer() zurück-transformieren.
+
+Mit tidyxl jedoch kann man die Zeilen jedes Elements der *character_formatted*-Spalte zählen und so Zellen mit Formatierungen identifizieren.
+
+```{r unpivotr_55b}
+
+xlsx_cells(path, sheet = "superscript symbols") %>%
+  dplyr::filter(data_type == "character") %>%
+  dplyr::filter(map_int(character_formatted, nrow) != 1) %>%
+  select(row, col, character)
+
+```
+
+Dann kann man die entsprechenden Werte und Symbole separat behandeln. Annahme: Wert = erster Eintrag; Symbol = zweiter Eintrag.
+
+```{r unpivotr_55c}
+
+xlsx_cells(path, sheet = "superscript symbols") %>%
+  mutate(character = map_chr(character_formatted,
+                             ~ ifelse(is.null(.x), character, .x$character[1])),
+         symbol = map_chr(character_formatted,
+                          ~ ifelse(is.null(.x), NA, .x$character[2])),
+         numeric = if_else(row > 1 & col == 2 & data_type == "character",
+                           as.numeric(character),
+                           numeric),
+         character = if_else(is.na(numeric), character, NA_character_)) %>%
+  select(row, col, numeric, character, symbol)
+
+```
+
+# unpivotr: Gotchas
+
+## Nicht-Texte in Spaltenüberschriften, z. B. Datumsformat**
+
+readxl konvertiert aktuell nicht zu R-Datumsformat
+
+Mit tidyxl und unpivotr kann man solche Zellen vor *spatter()* formatieren.  
+Fortgeschritten: im *behead()*-Aufruf Argument *formatters* angeben, z. B.:
+
+```{r unpivotr_81}
+
+xlsx_cells(path, sheet = "non-text headers") %>%
+  select(row, col, data_type, character, numeric, date) %>%
+  behead("up", header, formatters = list(date = ~ strftime(.x, "%Y"),
+                                        character = toupper))
+
+```
+
+
+## Daten in Kommentaren
+
+Abrufbar in der *comment*-Spalte, so wie *character*. Kommentare können formatiert sein, aber das zu berücksichtigen ist (noch?) nicht in tidyxl implementiert.
+
+```{r unpivotr_82a}
+
+path <- system.file("extdata", "worked-examples.xlsx", package = "unpivotr")
+xlsx_cells(path, sheet = "comments") %>%
+  select(row, col, data_type, character, numeric, comment) %>%
+  behead("up", "header")
+
+```
+
+```{r unpivotr_82b}
+
+cells <-
+  xlsx_cells(path, sheet = "comments") %>%
+  select(row, col, data_type, character, numeric, comment)
+cells
+
+values <-
+  cells %>%
+  select(-comment) %>%
+  behead("up", header) %>%
+  select(-col) %>%
+  spatter(header)
+values
+
+comments <-
+  cells %>%
+  behead("up", header) %>%
+  mutate(header = paste0(header, "_comment")) %>%
+  select(row, header, comment) %>%
+  spread(header, comment)
+comments
+
+left_join(values, comments, by = "row") %>%
+  select(-row)
+
+```
+
+
+Aktuell noch nicht ausgearbeitetes "Gotcha": Benannte Zellbereiche (*named ranges*).
+
+
+# Fallstudien
+
+https://nacnudus.github.io/spreadsheet-munging-strategies/case-studies.html
+
+* Excel-Mappen liegen im **smungs**-Paket auf GitHub.
+* Es gibt 7 Fallstudien sowie weitere Beispiele auf Youtube etc.
+
 
